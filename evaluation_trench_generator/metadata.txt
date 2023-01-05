@@ -6,7 +6,7 @@
 name=Evaluation Trenches Generator
 qgisMinimumVersion=3.0
 description=This plugin provide a set of tools to generates trenches for archaeological evaluations.
-version=1.01
+version=2.0
 author=Valerio Pinna
 email=pinnavalerio@yahoo.co.uk
 

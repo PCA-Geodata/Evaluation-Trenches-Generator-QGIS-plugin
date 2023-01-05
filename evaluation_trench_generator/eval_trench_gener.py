@@ -38,6 +38,8 @@ from .resources import *
 from .eval_trench_gener_dialog import EvalTrenchGeneratorDialog
 from .eval_trench_route_numbers_dialog import EvalTrenchRouteNumbersDialog
 from .eval_trench_generate_points_dialog import EvalTrenchGeneratePointsDialog
+from .eval_trench_generate_CSV_and_setout_dialog import EvalTrenchGenerateCSVDialog
+from .eval_trench_stakeout_route_CSV_dialog import EvalTrenchStakeOutRouteCSVDialog
 
 import os.path
 
@@ -71,14 +73,16 @@ class EvalTrenchGenerator:
             self.translator.load(locale_path)
             QCoreApplication.installTranslator(self.translator)
 
+        self.dlg2 = EvalTrenchRouteNumbersDialog()
+
         # Declare instance attributes
         self.actions = []
-        self.menu = self.tr(u'&Evaluation Trenches Generator')
+        self.menu = self.tr(u'&Evaluation Trench Generator')
 
-        self.toolbar = iface.mainWindow().findChild( QToolBar, u'Evaluation Trenches Generator' )
+        self.toolbar = iface.mainWindow().findChild( QToolBar, u'Evaluation Trench Generator' )
         if not self.toolbar:
-            self.toolbar = iface.addToolBar( u'Evaluation Trenches Generator' )
-            self.toolbar.setObjectName( u'Evaluation Trenches Generator' )
+            self.toolbar = iface.addToolBar( u'Evaluation Trench Generator' )
+            self.toolbar.setObjectName( u'Evaluation Trench Generator' )
             self.toolbar.setToolTip("")
         
         # Check if plugin was started the first time in current QGIS session
@@ -205,7 +209,7 @@ class EvalTrenchGenerator:
         
         self.layergeneratoricon= self.add_action( 
             icon_path = ':/plugins/eval_trench_gener/icons/trench_route_numbers_icon.png',
-            text=self.tr(u'Update the trench numeration according to the route'),
+            text=self.tr(u'Update the trench numeration according to a path'),
             callback=self.routeNumeration,
             parent=self.iface.mainWindow())
         # will be set False in run()
@@ -216,8 +220,8 @@ class EvalTrenchGenerator:
 
         self.layergeneratoricon= self.add_action( 
             icon_path = ':/plugins/eval_trench_gener/icons/trench_points_icon.png',
-            text=self.tr(u'Generate points on the corners and at the midpoints'),
-            callback=self.generate_trench_points,
+            text=self.tr(u'Generate stake out points'),
+            callback=self.generate_stakeout_points,
             parent=self.iface.mainWindow())
         # will be set False in run()
         self.first_start = True
@@ -239,7 +243,7 @@ class EvalTrenchGenerator:
         """Removes the plugin menu item and icon from QGIS GUI."""
         for action in self.actions:
             self.iface.removePluginMenu(
-                self.tr(u'&Evaluation Trenches Generator'),
+                self.tr(u'&Evaluation Trench Generator'),
                 action)
             self.iface.removeToolBarIcon(action)
     
@@ -273,8 +277,8 @@ class EvalTrenchGenerator:
                     if lay.geometryType() == 1: #line
                         lines_list.append(lay.name())
 
-            self.dlg.routelayer_comboBox.clear()
-            self.dlg.routelayer_comboBox.addItems(lines_list)
+            self.dlg2.routelayer_comboBox.clear()
+            self.dlg2.routelayer_comboBox.addItems(lines_list) 
         if len(layers_list)== 0:
             iface.messageBar().pushMessage(
                 "Trench Creator Plugin", 
@@ -292,8 +296,8 @@ class EvalTrenchGenerator:
                     if lay.geometryType() == 2: #polygon
                         loe_list.append(lay.name())
 
-            self.dlg.trenchLOE_layer_comboBox.clear()
-            self.dlg.trenchLOE_layer_comboBox.addItems(loe_list)
+            self.dlg2.trenchLOE_layer_comboBox.clear()
+            self.dlg2.trenchLOE_layer_comboBox.addItems(loe_list)
         if len(layers_list)== 0:
             iface.messageBar().pushMessage(
                 "Trench Creator Plugin", 
@@ -325,9 +329,11 @@ class EvalTrenchGenerator:
             trench_by_number_check = self.dlg.trench_by_number_checkBox.isChecked()
             trench_by_ares_check = self.dlg.trench_by_area_checkBox.isChecked()         
             site_boundary = self.dlg.sb_comboBox.currentText()
+            
+            project_dir = QgsProject.instance().homePath() + '/Shapefiles/Trench_LOE.shp'
            
             if len(site_boundary) == 0:
-                QMessageBox.about(None,'Evaluation Trenches Generator', 'No site boundary layer was selected. Please select a layer.')
+                QMessageBox.about(None,'Evaluation Trench Generator', 'No site boundary layer was selected. Please select a layer.')
                 return self.dontdonothing()
             
             else:
@@ -336,10 +342,10 @@ class EvalTrenchGenerator:
             trench_area = trench_length *trench_width
             
             if trench_by_number_check == True and trench_by_ares_check == True: 
-                        QMessageBox.about(None,'Evaluation Trenches Generator', 'Both options to define the number of trenches are selected. Please select only one option.')
+                        QMessageBox.about(None,'Evaluation Trench Generator', 'Both options to define the number of trenches are selected. Please select only one option.')
                         return self.dontdonothing()
             if trench_by_number_check == False and trench_by_ares_check == False: 
-                QMessageBox.about(None,'Evaluation Trenches Generator', 'One option to define the number of trenches needs to be selected.') 
+                QMessageBox.about(None,'Evaluation Trench Generator', 'One option to define the number of trenches needs to be selected.') 
                 return self.dontdonothing()
             
             layers = QgsProject.instance().mapLayers()
@@ -351,116 +357,136 @@ class EvalTrenchGenerator:
             if len(layers)!= 0:                  
                 sbl = QgsProject.instance().mapLayersByName(site_boundary)[0]
                 if sbl.geometryType() == 2: #polygon
-
-                    #create a new temp layer
-                    temp_layer = QgsVectorLayer("polygon?crs=epsg:27700", "Trenches", "memory")
-                    pr = temp_layer.dataProvider()
-                    pr.addAttributes([QgsField("id",  QVariant.Int),
-                                      QgsField("loe_no", QVariant.Int),
-                                      QgsField("surv_type", QVariant.String),
-                                      QgsField("surv_notes", QVariant.String)])
-                    temp_layer.updateFields() 
                     
+                    numb_of_feat_list = []
+                    for feat in sbl.getFeatures():
+                        numb_of_feat_list.append(feat)
+                        
+                    if len(numb_of_feat_list) == 0:
+                        QMessageBox.about(None,'Evaluation Trench Generator', 'The selected layer is a empty layer. Draw a valid site boundary and retry.') 
+                        return self.dontdonothing()
                     
-                    site_boundary_area_total = 0
-                    for feature in sbl.getFeatures():
-                        site_boundary_area_total += feature.geometry().area()
+                    if len(numb_of_feat_list) != 0:
 
-                    area_to_cover = (site_boundary_area_total*area_to_cover_percentage)/100
-                    trench_number_by_area = area_to_cover/trench_area
-                    
-                    #calculate a -10m buffer on the site boundary
-                    buffered_sbl = processing.run("native:buffer", {'INPUT':
-                    sbl,'DISTANCE':-10,
-                    'SEGMENTS':5,
-                    'END_CAP_STYLE':0,
-                    'JOIN_STYLE':0,
-                    'MITER_LIMIT':2,
-                    'DISSOLVE':False
-                    ,'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]
-                                    
+                        #create a new temp layer
+                        temp_layer = QgsVectorLayer("polygon?crs=epsg:27700", "Trench_LOE", "memory")
+                        pr = temp_layer.dataProvider()
+                        pr.addAttributes([QgsField("id",  QVariant.Int),
+                                          QgsField("loe_no", QVariant.Int),
+                                          QgsField("surv_type", QVariant.String),
+                                          QgsField("surv_notes", QVariant.String)])
+                        temp_layer.updateFields() 
+                        
+                        
+                        site_boundary_area_total = 0
+                        for feature in sbl.getFeatures():
+                            site_boundary_area_total += feature.geometry().area()
 
-                    #create random points
-                    random = processing.run("qgis:randompointsinsidepolygons", {'INPUT':buffered_sbl,
-                    'STRATEGY':0,
-                    'VALUE':10000,
-                    'MIN_DISTANCE':None,
-                    'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]
+                        area_to_cover = (site_boundary_area_total*area_to_cover_percentage)/100
+                        trench_number_by_area = area_to_cover/trench_area
+                        
+                        #calculate a -10m buffer on the site boundary
+                        buffered_sbl = processing.run("native:buffer", {'INPUT':
+                        sbl,'DISTANCE':-10,
+                        'SEGMENTS':5,
+                        'END_CAP_STYLE':0,
+                        'JOIN_STYLE':0,
+                        'MITER_LIMIT':2,
+                        'DISSOLVE':False
+                        ,'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]
+                                        
 
-                    #reate clusters
-                    if trench_by_number_check == True and trench_by_ares_check == False: 
-                        cluster = processing.run("native:kmeansclustering", {'INPUT':random,
-                        'CLUSTERS':trench_by_number, ### here the number of trenches
-                        'FIELD_NAME':'CLUSTER_ID',
-                        'SIZE_FIELD_NAME':'CLUSTER_SIZE',
+                        #create random points
+                        random = processing.run("qgis:randompointsinsidepolygons", {'INPUT':buffered_sbl,
+                        'STRATEGY':0,
+                        'VALUE':10000,
+                        'MIN_DISTANCE':None,
                         'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]
-                    
-                    if trench_by_number_check == False and trench_by_ares_check == True: 
-                        cluster = processing.run("native:kmeansclustering", {'INPUT':random,
-                        'CLUSTERS':trench_number_by_area, ### here the number of trenches
-                        'FIELD_NAME':'CLUSTER_ID',
-                        'SIZE_FIELD_NAME':'CLUSTER_SIZE',
-                        'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]  
+
+                        #reate clusters
+                        if trench_by_number_check == True and trench_by_ares_check == False: 
+                            cluster = processing.run("native:kmeansclustering", {'INPUT':random,
+                            'CLUSTERS':trench_by_number, ### here the number of trenches
+                            'FIELD_NAME':'CLUSTER_ID',
+                            'SIZE_FIELD_NAME':'CLUSTER_SIZE',
+                            'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]
                         
-                    if trench_by_number_check == True and trench_by_ares_check == True: 
-                        QMessageBox.about(None,'Evaluation Trenches Generator', 'Both options to define the number of trenches are selected. Select only on option.')
+                        if trench_by_number_check == False and trench_by_ares_check == True: 
+                            cluster = processing.run("native:kmeansclustering", {'INPUT':random,
+                            'CLUSTERS':trench_number_by_area, ### here the number of trenches
+                            'FIELD_NAME':'CLUSTER_ID',
+                            'SIZE_FIELD_NAME':'CLUSTER_SIZE',
+                            'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]  
+                            
+                        if trench_by_number_check == True and trench_by_ares_check == True: 
+                            QMessageBox.about(None,'Evaluation Trench Generator', 'Both options to define the number of trenches are selected. Select only on option.')
 
-                    if trench_by_number_check == False and trench_by_ares_check == False: 
-                        QMessageBox.about(None,'Evaluation Trenches Generator', 'An option to define the number of trenches needs to be selected.') 
+                        if trench_by_number_check == False and trench_by_ares_check == False: 
+                            QMessageBox.about(None,'Evaluation Trench Generator', 'An option to define the number of trenches needs to be selected.') 
+                            
+                        #aggreagate
+                        aggregated = processing.run("native:aggregate", {'INPUT':cluster,
+                        'GROUP_BY':'"CLUSTER_ID"',
+                        'AGGREGATES':[{'aggregate': 'sum','delimiter': ',','input': '"id"','length': 10,'name': 'id','precision': 0,'type': 2},{'aggregate': 'sum','delimiter': ',','input': '"CLUSTER_ID"','length': 0,'name': 'CLUSTER_ID','precision': 0,'type': 2},{'aggregate': 'sum','delimiter': ',','input': '"CLUSTER_SIZE"','length': 0,'name': 'CLUSTER_SIZE','precision': 0,'type': 2}],
+                        'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]
+
+                        #centroids
+                        centroids = processing.runAndLoadResults("native:centroids", {'INPUT':aggregated,
+                        'ALL_PARTS':False,
+                        'OUTPUT':'TEMPORARY_OUTPUT'}) 
+
+                        new_points_temp_layer = QgsProject.instance().mapLayersByName('Centroids')[0]
+                        for p in new_points_temp_layer.getFeatures():
+                            x_point = p.geometry().asPoint().x()
+                            y_point = p.geometry().asPoint().y()
+
+                            corner1 = x_point+trench_width/2, y_point+trench_length/2
+                            corner2 = x_point+trench_width/2, y_point-trench_length/2
+                            corner3 = x_point-trench_width/2, y_point-trench_length/2
+                            corner4 = x_point-trench_width/2, y_point+trench_length/2
+                            
+                            poly_coord = [corner1, corner2, corner3, corner4]
+
+                            #add feature to layer
+                            f = QgsFeature()
+                            f.setAttributes([0, 0, 'trench'])
+                            f.setGeometry(QgsGeometry.fromPolygonXY( [[ QgsPointXY( pair[0], pair[1] ) for pair in poly_coord ]] )) 
+                            
+                            pr.addFeature(f)
+
+                        temp_layer.updateExtents() 
+                        QgsProject.instance().removeMapLayers([new_points_temp_layer.id()])
                         
-                    #aggreagate
-                    aggregated = processing.run("native:aggregate", {'INPUT':cluster,
-                    'GROUP_BY':'"CLUSTER_ID"',
-                    'AGGREGATES':[{'aggregate': 'sum','delimiter': ',','input': '"id"','length': 10,'name': 'id','precision': 0,'type': 2},{'aggregate': 'sum','delimiter': ',','input': '"CLUSTER_ID"','length': 0,'name': 'CLUSTER_ID','precision': 0,'type': 2},{'aggregate': 'sum','delimiter': ',','input': '"CLUSTER_SIZE"','length': 0,'name': 'CLUSTER_SIZE','precision': 0,'type': 2}],
-                    'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]
+                        options = QgsVectorFileWriter.SaveVectorOptions()
+                        options.driverName = "ESRI Shapefile"
 
-                    #centroids
-                    centroids = processing.runAndLoadResults("native:centroids", {'INPUT':aggregated,
-                    'ALL_PARTS':False,
-                    'OUTPUT':'TEMPORARY_OUTPUT'}) 
+                        QgsVectorFileWriter.writeAsVectorFormatV2(temp_layer, project_dir, QgsCoordinateTransformContext(), options)
 
-                    new_points_temp_layer = QgsProject.instance().mapLayersByName('Centroids')[0]
-                    for p in new_points_temp_layer.getFeatures():
-                        x_point = p.geometry().asPoint().x()
-                        y_point = p.geometry().asPoint().y()
+                        new_file = QgsVectorLayer(project_dir, "Trench_LOE", "ogr")
 
-                        corner1 = x_point+trench_width/2, y_point+trench_length/2
-                        corner2 = x_point+trench_width/2, y_point-trench_length/2
-                        corner3 = x_point-trench_width/2, y_point-trench_length/2
-                        corner4 = x_point-trench_width/2, y_point+trench_length/2
+                        QgsProject.instance().addMapLayer(new_file)
                         
-                        poly_coord = [corner1, corner2, corner3, corner4]
-
-                        #add feature to layer
-                        f = QgsFeature()
-                        f.setAttributes([0, 0, 'trench'])
-                        f.setGeometry(QgsGeometry.fromPolygonXY( [[ QgsPointXY( pair[0], pair[1] ) for pair in poly_coord ]] )) 
                         
-                        pr.addFeature(f)
-
-                    temp_layer.updateExtents() 
-                    QgsProject.instance().removeMapLayers([new_points_temp_layer.id()])
-
-                    QgsProject.instance().addMapLayer(temp_layer)
-                    
-                    #add style from file
-        
-                    temp_layer.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/Trench_LOE_style.qml')))    
-
-                    iface.mapCanvas().refresh()
-                    
-                    if trench_by_number_check == True and trench_by_ares_check == False:
-                        QMessageBox.about(
-                        None,
-                        'Evaluation Trench Generator',
-                        '''{} trenches successfully added to the map.'''.format(trench_by_number))
-                    
-                    if trench_by_number_check == False and trench_by_ares_check == True: 
+                        ####
                         
-                        QMessageBox.about(
-                        None,
-                        'Evaluation Trench Generator',
-                        '''{} trenches successfully added to the map. '''.format(round(trench_number_by_area)))
+                        #add style from file
+            
+                        new_file.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/Trench_LOE_style.qml')))    
+
+                        iface.mapCanvas().refresh()
+                        
+                        if trench_by_number_check == True and trench_by_ares_check == False:
+                            QMessageBox.about(
+                            None,
+                            'Evaluation Trench Generator',
+                            '''{} trenches successfully added to the map.'''.format(trench_by_number))
+                        
+                        if trench_by_number_check == False and trench_by_ares_check == True: 
+                            
+                            QMessageBox.about(
+                            None,
+                            'Evaluation Trench Generator',
+                            '''{} trenches successfully added to the map. '''.format(round(trench_number_by_area)))
 
 
     def rotateTrench_counterclockwise(self):
@@ -469,7 +495,7 @@ class EvalTrenchGenerator:
         if len(layers_list)!= 0:                  
             layer = iface.activeLayer()
             layer.startEditing()
-            layer.beginEditCommand("Rotate Selected Trenches")
+            layer.beginEditCommand("Rotate Selected Trench")
 
             feat_to_change=[]
             for f in layer.selectedFeatures():
@@ -496,7 +522,7 @@ class EvalTrenchGenerator:
         if len(layers_list)!= 0:                  
             layer = iface.activeLayer()
             layer.startEditing()
-            layer.beginEditCommand("Rotate Selected Trenches")
+            layer.beginEditCommand("Rotate Selected Trench")
 
             feat_to_change=[]
             for f in layer.selectedFeatures():
@@ -517,7 +543,38 @@ class EvalTrenchGenerator:
         if len(layers_list)== 0:
             return self.dontdonothing()
             
+    def create_route_layer(self):
+
+        for lyr in QgsProject.instance().mapLayers().values():
+            if lyr.name() == "Route layer":
+                reply = QMessageBox.warning(None,  'Evaluation Trench Generator',
+                                        '''A layer named 'Route layer' already exists! \nDo you want to overwrite it? All your previous edits will be lost.''',
+                                        QMessageBox.Yes, QMessageBox.No)
+                
+                if reply == QMessageBox.No: 
+                    return self.dontdonothing()
+                if reply == QMessageBox.Yes:
+                    QgsProject.instance().removeMapLayers([lyr.id()])
+                    
             
+     
+            new_route_layer =  QgsVectorLayer('Linestring?crs=epsg:27700', 'Route layer' , "memory")
+            if new_route_layer.isValid():
+                QgsProject.instance().addMapLayer(new_route_layer )
+
+                iface.setActiveLayer(new_route_layer )
+
+                ##
+
+                new_route_layer.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/Route_line_style.qml')))    
+
+                iface.mapCanvas().refresh()
+                QMessageBox.about(
+                        None,
+                        'Evaluation Trench Generator',
+                        ''''Route layer' successfully created and added to the map. \n\nDraw on map the route representing the numbering order and restart the tool.''')
+                self.dlg2.close()
+                return self.dontdonothing()
            
     def routeNumeration(self):       
         """Run method that performs all the real work"""
@@ -526,187 +583,99 @@ class EvalTrenchGenerator:
         # Only create GUI ONCE in callback, so that it will only load when the plugin is started
         if self.first_start == True:
             #self.first_start = False
-            self.dlg = EvalTrenchRouteNumbersDialog()
+            self.dlg2 = EvalTrenchRouteNumbersDialog()
             self.layers = {layer.name():layer for layer in QgsProject.instance().mapLayers().values() if layer.type()== 0}
             self.get_route_layer()
             self.get_loe_layer()
-        
+            self.dlg2.create_route_layer_pushButton.clicked.connect(self.create_route_layer)
+            
         # show the dialog
-        self.dlg.show()
+        self.dlg2.show()
         # Run the dialog event loop
-        result = self.dlg.exec_()
+        result = self.dlg2.exec_()
         # See if OK was pressed
+        
+
         if result:
-            trench_first_number = self.dlg.tr_first_num_spinBox.value()
-            route_layer_name = self.dlg.routelayer_comboBox.currentText()
+            trench_first_number = self.dlg2.tr_first_num_spinBox.value()
+            route_layer_name = self.dlg2.routelayer_comboBox.currentText()
             if len(route_layer_name) == 0:
-                QMessageBox.about(None,'Evaluation Trenches Generator', 'No route layer was selected. Please select a layer.')
+                QMessageBox.about(None,'Evaluation Trench Generator', 'No route layer was selected. Please select a layer.')
                 return self.dontdonothing()
             else:
-                self.shpLayer = self.layers[self.dlg.routelayer_comboBox.currentText()]
+                self.shpLayer = self.layers[self.dlg2.routelayer_comboBox.currentText()]
            
-                trench_loe_layer_name = self.dlg.trenchLOE_layer_comboBox.currentText()
+                trench_loe_layer_name = self.dlg2.trenchLOE_layer_comboBox.currentText()
                 if len(trench_loe_layer_name) == 0:
-                    QMessageBox.about(None,'Evaluation Trenches Generator', 'No trenches LOE layer was selected. Please select a layer.')
+                    QMessageBox.about(None,'Evaluation Trench Generator', 'No trenches LOE layer was selected. Please select a layer.')
                     return self.dontdonothing()
             
                 else: 
-                    self.shpLayer = self.layers[self.dlg.trenchLOE_layer_comboBox.currentText()] 
+                    self.shpLayer = self.layers[self.dlg2.trenchLOE_layer_comboBox.currentText()] 
 
                 route_lay = QgsProject.instance().mapLayersByName(route_layer_name)[0]
                 trenchLOE_lay = QgsProject.instance().mapLayersByName(trench_loe_layer_name)[0]
                 
                 fea_id = []
-                for fea in route_lay.getFeatures():
+                for fea in route_lay.getFeatures():                    
                     fea_id.append (fea.id())
                     
-                route_id = fea_id[0]
-
-                trenchLOE_lay.startEditing()
-
-                e = QgsExpression( '''\
-                if( overlay_intersects( layer:='{}') is True,\
-                with_variable('route', geometry( get_feature_by_id('{}', {})),\
-                array_find(\
-                array_filter(\
-                array_sort(\
-                array_agg(line_locate_point(@route, start_point(intersection($geometry, @route))))\
-                ), @element>=0),\
-                line_locate_point(@route, start_point(intersection($geometry, @route)))\
-                ))+{}\
-                ,"loe_no")\
-                '''.format(route_layer_name, route_layer_name, route_id, trench_first_number ) )
-
-                context = QgsExpressionContext()
-                context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(trenchLOE_lay))
-
-                for f in trenchLOE_lay.getFeatures():
-                    context.setFeature(f)
-                    f['loe_no'] = e.evaluate( context )
-                    trenchLOE_lay.updateFeature(f)
-
-                trenchLOE_lay.commitChanges()
-
-
-    def generate_trench_points(self):
-        """Run method that performs all the real work"""
-
-        # Create the dialog with elements (after translation) and keep reference
-        # Only create GUI ONCE in callback, so that it will only load when the plugin is started
-        if self.first_start == True:
-            #self.first_start = False
-            self.dlg = EvalTrenchGeneratePointsDialog()
-            self.layers = {layer.name():layer for layer in QgsProject.instance().mapLayers().values() if layer.type()== 0}
-            self.get_loe_layer()
-        
-        # show the dialog
-        self.dlg.show()
-        # Run the dialog event loop
-        result = self.dlg.exec_()
-        # See if OK was pressed
-        if result:
-           
-            trench_loe_layer_name = self.dlg.trenchLOE_layer_comboBox.currentText()
-
-            if len(trench_loe_layer_name) == 0:
-                QMessageBox.about(None,'Evaluation Trenches Generator', 'No trenches LOE layer was selected. Please select a layer')
-                return self.dontdonothing()
-        
-            else: 
-                self.shpLayer = self.layers[self.dlg.trenchLOE_layer_comboBox.currentText()]  
-
-            poly_to_line = processing.run("native:polygonstolines", {'INPUT':trench_loe_layer_name,
-            'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]
-
-
-            explode_lines = processing.run("native:explodelines", {'INPUT': poly_to_line,
-            'OUTPUT':'TEMPORARY_OUTPUT'})  ["OUTPUT"]
-
-            trench_points = processing.run("native:geometrybyexpression", {'INPUT': explode_lines,
-            'OUTPUT_GEOMETRY':2,'WITH_Z':False,'WITH_M':False,
-            'EXPRESSION':'collect_geometries(\r\n\r\nline_interpolate_point($geometry, \
-            length( $geometry)/2)\r\n\r\n,\r\n\r\n\r\nstart_point($geometry)\r\n\r\n\r\n)',
-            'OUTPUT':'TEMPORARY_OUTPUT'})  ["OUTPUT"]
-
-            multi_to_singlepart = processing.runAndLoadResults("native:multiparttosingleparts", {'INPUT':trench_points,
-            'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]
-
-            new_points_temp_layer = QgsProject.instance().mapLayersByName('Single parts')[0]
-
-            new_points_temp_layer.setName('Trench_points')
-            
-            
-            centroids_for_labels = processing.runAndLoadResults("native:centroids", {'INPUT':trench_loe_layer_name,
-            'ALL_PARTS':False,'OUTPUT':'TEMPORARY_OUTPUT'})  ["OUTPUT"]
-
-            new_centroids_temp_layer = QgsProject.instance().mapLayersByName('Centroids')[0]
-           
-            
-            
-            #create a new temp layer
-            pr = new_centroids_temp_layer.dataProvider()
-            pr.addAttributes([QgsField("Tr_no", QVariant.String)])
-            new_centroids_temp_layer.updateFields() 
-            
-            ###add expression
-            new_centroids_temp_layer.startEditing()
-
-            e = QgsExpression(''' 'Tr. ' || "loe_no"''' ) 
-            context = QgsExpressionContext()
-            context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(new_centroids_temp_layer))
-
-            for f in new_centroids_temp_layer.getFeatures():
-                context.setFeature(f)
-                f['Tr_no'] = e.evaluate( context )
-                new_centroids_temp_layer.updateFeature(f)
-
-            new_centroids_temp_layer.commitChanges()
-
-            new_centroids_temp_layer.setName('Trench_numbers')
-
-
-    def generateCSV(self):
-        if self.first_start == True:
-            #self.first_start = False
-            self.dlg = EvalTrenchGeneratePointsDialog()
-            self.layers = {layer.name():layer for layer in QgsProject.instance().mapLayers().values() if layer.type()== 0}
-            self.get_loe_layer()
-        
-        # show the dialog
-        self.dlg.show()
-        # Run the dialog event loop
-        result = self.dlg.exec_()
-        # See if OK was pressed
-        if result:
-           
-            trench_loe_layer_name = self.dlg.trenchLOE_layer_comboBox.currentText()
-
-            if len(trench_loe_layer_name) == 0:
-                QMessageBox.about(None,'Evaluation Trenches Generator', 'No trenches LOE layer was selected. Please select a layer')
-                return self.dontdonothing()
-        
-            else: 
-                self.shpLayer = self.layers[self.dlg.trenchLOE_layer_comboBox.currentText()]  
-            
-            LOE_check_layer = QgsProject.instance().mapLayersByName(trench_loe_layer_name)[0]
-            #check if the trench number contains a 0 value
-            loe_list = []
-            for f in LOE_check_layer.getFeatures():
-                attrs = f.attributes()[1]
-                loe_list.append(attrs)
-            
-            if 0 not in loe_list:
-                pass
-            if 0 in loe_list:
-                reply = QMessageBox.warning(None,  'Evaluation Trenches Generator',
-                                                   'The number of one or more trenches is set as 0. \nIf you continue. the generated CSV may not show the stakeout points in the correct order. \nDo you want to continue anyway?',
-                                                    QMessageBox.Yes, QMessageBox.No)
-                if reply == QMessageBox.No: 
+                if len(fea_id) == 0: 
+                    QMessageBox.about(None,'Evaluation Trench Generator', '''The Route layer doesn't contain any valid line. Please draw on map the route representing the numbering order and retry.''')
                     return self.dontdonothing()
-                            
-                if reply == QMessageBox.Yes:
-                    pass
-                
+                if len(fea_id) != 0: 
+                    
+                    route_id = fea_id[0]
+
+                    trenchLOE_lay.startEditing()
+
+                    e = QgsExpression( '''\
+                    if( overlay_intersects( layer:='{}') is True,\
+                    with_variable('route', geometry( get_feature_by_id('{}', {})),\
+                    array_find(\
+                    array_filter(\
+                    array_sort(\
+                    array_agg(line_locate_point(@route, start_point(intersection($geometry, @route))))\
+                    ), @element>=0),\
+                    line_locate_point(@route, start_point(intersection($geometry, @route)))\
+                    ))+{}\
+                    ,"loe_no")\
+                    '''.format(route_layer_name, route_layer_name, route_id, trench_first_number ) )
+
+                    context = QgsExpressionContext()
+                    context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(trenchLOE_lay))
+
+                    for f in trenchLOE_lay.getFeatures():
+                        context.setFeature(f)
+                        f['loe_no'] = e.evaluate( context )
+                        trenchLOE_lay.updateFeature(f)
+
+                    trenchLOE_lay.commitChanges()
+
+
+    def generate_stakeout_points(self):
+        if self.first_start == True:
+            #self.first_start = False
+            self.dlg2 = EvalTrenchGenerateCSVDialog()
+            self.layers = {layer.name():layer for layer in QgsProject.instance().mapLayers().values() if layer.type()== 0}
+            self.get_loe_layer()
+        
+        # show the dialog
+        self.dlg2.show()
+        # Run the dialog event loop
+        result = self.dlg2.exec_()
+        # See if OK was pressed
+        if result:
+           
+            trench_loe_layer_name = self.dlg2.trenchLOE_layer_comboBox.currentText()
+
+            if len(trench_loe_layer_name) == 0:
+                QMessageBox.about(None,'Evaluation Trench Generator', 'No trenches LOE layer was selected. Please select a layer')
+                return self.dontdonothing()
+        
+            else: 
+                self.shpLayer = self.layers[self.dlg2.trenchLOE_layer_comboBox.currentText()]  
+
                     
             # Polygons to lines
 
@@ -726,26 +695,176 @@ class EvalTrenchGenerator:
             length( $geometry)/2))',
             'OUTPUT':'TEMPORARY_OUTPUT'})  ["OUTPUT"]
 
-            multi_to_singlepart = processing.run("native:multiparttosingleparts", {'INPUT':trench_points,
-            'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]
+            project_dir = QgsProject.instance().homePath() + '/Shapefiles'
 
-            ordered_by_loe_plus_id = processing.runAndLoadResults("native:orderbyexpression", {'INPUT':multi_to_singlepart,
-            'EXPRESSION':'to_string(lpad("loe_no",3,0))\r\n\r\n\r\n+ to_string($x-$y)\r\n\r\n',
-            'ASCENDING':True,'NULLS_FIRST':False,'OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]
+            parameters = {'INPUT': trench_points, 
+                          'OUTPUT': str(project_dir+'/StakeOut_Points.shp')}
+                          
+                          
+            processing.run("native:multiparttosingleparts", parameters)
+    
+            new_layer = project_dir +'/StakeOut_Points.shp'
+            new_stakeout_layer = iface.addVectorLayer(new_layer, "StakeOut_Points", "ogr")
+            
+            if not new_stakeout_layer:
+                print("Layer failed to load!")
+                
+                
+            #add style from file
+            #new_stakeout_layer_on_map = QgsProject.instance().mapLayersByName('StakeOut_Points')[0]
+            new_stakeout_layer.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/StakeOut_Points_style.qml')))    
+            
+            
+            root = QgsProject.instance().layerTreeRoot()
+            new_stakeout_layer_on_map = QgsProject.instance().mapLayersByName("StakeOut_Points")
+            thelayer = new_stakeout_layer_on_map[0]
+            myblayer = root.findLayer(thelayer.id())
+            myClone = myblayer.clone()
+            parent = myblayer.parent()
+            root.findGroup("Mapping").insertChildNode(1, myClone)
+            parent.removeChildNode(myblayer) 
 
-            new_points_temp_layer = QgsProject.instance().mapLayersByName('Ordered')[0]
+            #expand group
+            layeronplace = QgsProject.instance().mapLayersByName('StakeOut_Points')[0]
+            myLayerNode = root.findLayer(layeronplace.id())
+            myLayerNode.setExpanded(True)
+            
+            iface.mapCanvas().refresh()
+        
+            ## change fields
+            
+            
 
-            new_points_temp_layer.setName('Trench_StakeOut_points')
+            ### reorganise fields 
+            layeronplace.startEditing()
+            res = layeronplace.dataProvider().deleteAttributes([1,2,3])    # The [0] represents the 1st field, so [1] is the 2nd field etc. To delete multiple fields, use the comma to separate. Eg. [0, 2, 4]
+            layeronplace.updateFields()
+            
+            
+            context = QgsExpressionContext()
+            context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(layeronplace))
 
+            ###field X
+            field_x = QgsField('X', QVariant.Double)
+            layeronplace.dataProvider().addAttributes([field_x])
+            layeronplace.updateFields()
+            idx = layeronplace.fields().indexOf('X')
+
+            e_x = QgsExpression( "$x" )
+            context = QgsExpressionContext()
+            context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(layeronplace))
+
+            for f in layeronplace.getFeatures():
+                context.setFeature(f)
+                f['X'] = e_x.evaluate( context )
+                layeronplace.updateFeature( f )
+
+            ###field y
+            field_x = QgsField('Y', QVariant.Double)
+            layeronplace.dataProvider().addAttributes([field_x])
+            layeronplace.updateFields()
+            idx = layeronplace.fields().indexOf('Y')
+
+            e_x = QgsExpression( "$y" )
+            context = QgsExpressionContext()
+            context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(layeronplace))
+
+            for f in layeronplace.getFeatures():
+                context.setFeature(f)
+                f['Y'] = e_x.evaluate( context )
+                layeronplace.updateFeature( f )
+
+            layeronplace.commitChanges()
+            
+            
+ 
+        
+    def generateCSV(self):
+        pass
+        if self.first_start == True:
+            #self.first_start = False
+            self.dlg7 = EvalTrenchStakeOutRouteCSVDialog()
+            self.layers = {layer.name():layer for layer in QgsProject.instance().mapLayers().values() if layer.type()== 0}
+            
+               
+            self.dlg7.stakeout_points_layer_comboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
+            self.dlg7.stakeout_survey_path_layer_comboBox.setFilters(QgsMapLayerProxyModel.LineLayer)
+            
+           
+        # show the dialog
+        self.dlg7.show()
+        # Run the dialog event loop
+        result = self.dlg7.exec_()
+        # See if OK was pressed
+        if result:
+            SO_point_first_number = self.dlg7.so_point_first_num_spinBox.value()
+           
+            stakeout_points_layer_name = self.dlg7.stakeout_points_layer_comboBox.currentText()
+            if len(stakeout_points_layer_name) == 0:
+                QMessageBox.about(None,'Evaluation Trench Generator', 'No Stake-out point layer was selected. Please select a layer')
+                return self.dontdonothing()
+            else: 
+                self.shpLayer = self.layers[self.dlg7.stakeout_points_layer_comboBox.currentText()]  
+            
+            stakeout_survey_path_layer_name = self.dlg7.stakeout_survey_path_layer_comboBox.currentText()
+            if len(stakeout_survey_path_layer_name) == 0:
+                QMessageBox.about(None,'Evaluation Trench Generator', 'No Stake-out point layer was selected. Please select a layer')
+                return self.dontdonothing()
+            else: 
+                self.shpLayer = self.layers[self.dlg7.stakeout_survey_path_layer_comboBox.currentText()]
+            
+             
+            
+            stakeout_points_layer = QgsProject.instance().mapLayersByName(stakeout_points_layer_name)[0]
+            stakeout_survey_path_layer = QgsProject.instance().mapLayersByName(stakeout_survey_path_layer_name)[0]
+            
+            fea_id = []
+            for fea in stakeout_survey_path_layer.getFeatures():                    
+                fea_id.append (fea.id())
+                
+            if len(fea_id) == 0: 
+                QMessageBox.about(None,'Evaluation Trench Generator', '''The Stake-out path layer doesn't contain any valid line. Please draw on map the suggested survey path representing the numbering order and retry.''')
+                return self.dontdonothing()
+            if len(fea_id) != 0: 
+                
+                route_id = fea_id[0]
+
+                stakeout_points_layer.startEditing()
+
+                e = QgsExpression( '''\
+                if( overlay_intersects( layer:='{}') is True,\
+                with_variable('route', geometry( get_feature_by_id('{}', {})),\
+                array_find(\
+                array_filter(\
+                array_sort(\
+                array_agg(line_locate_point(@route, start_point(intersection(buffer($geometry,1.5), @route))))\
+                ), @element>=0),\
+                line_locate_point(@route, start_point(intersection(buffer($geometry,1.5), @route)))\
+                ))+{}\
+                ,"id")\
+                '''.format(stakeout_survey_path_layer_name, stakeout_survey_path_layer_name, route_id, SO_point_first_number ) )
+
+                context = QgsExpressionContext()
+                context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(stakeout_points_layer))
+
+                for f in stakeout_points_layer.getFeatures():
+                    context.setFeature(f)
+                    f['id'] = e.evaluate( context )
+                    stakeout_points_layer.updateFeature(f)
+
+                stakeout_points_layer.commitChanges()
+
+
+            #Generate CSV for setout
             ####################################
-            points_for_CSV = QgsProject.instance().mapLayersByName('Trench_StakeOut_points')[0]
+            points_for_CSV = QgsProject.instance().mapLayersByName('StakeOut_Points')[0]
             #
 
             ### add new fields 
             points_for_CSV.startEditing()
 
-            ###recalculate order of LOE on ID
-            e_order = QgsExpression( '''array_find(array_sort(array_agg(to_string(lpad("loe_no",3,0))+ to_string($x-$y))),to_string(lpad("loe_no",3,0))+ to_string($x-$y))+1''' )
+            ###recalculate order by ID
+            e_order = QgsExpression( '''"id"''' )
             context = QgsExpressionContext()
             context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(points_for_CSV))
 
@@ -754,39 +873,39 @@ class EvalTrenchGenerator:
                 f['id'] = e_order.evaluate( context )
                 points_for_CSV.updateFeature( f )
 
-            ###field X
-            field_x = QgsField('X', QVariant.Double)
-            points_for_CSV.dataProvider().addAttributes([field_x])
-            points_for_CSV.updateFields()
-            idx = points_for_CSV.fields().indexOf('X')
+            # ###field X
+            # field_x = QgsField('X', QVariant.Double)
+            # points_for_CSV.dataProvider().addAttributes([field_x])
+            # points_for_CSV.updateFields()
+            # idx = points_for_CSV.fields().indexOf('X')
 
-            e_x = QgsExpression( "$x" )
-            context = QgsExpressionContext()
-            context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(points_for_CSV))
+            # e_x = QgsExpression( "$x" )
+            # context = QgsExpressionContext()
+            # context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(points_for_CSV))
 
-            for f in points_for_CSV.getFeatures():
-                context.setFeature(f)
-                f['X'] = e_x.evaluate( context )
-                points_for_CSV.updateFeature( f )
+            # for f in points_for_CSV.getFeatures():
+                # context.setFeature(f)
+                # f['X'] = e_x.evaluate( context )
+                # points_for_CSV.updateFeature( f )
 
-            ###field y
-            field_x = QgsField('Y', QVariant.Double)
-            points_for_CSV.dataProvider().addAttributes([field_x])
-            points_for_CSV.updateFields()
-            idx = points_for_CSV.fields().indexOf('Y')
+            # ###field y
+            # field_x = QgsField('Y', QVariant.Double)
+            # points_for_CSV.dataProvider().addAttributes([field_x])
+            # points_for_CSV.updateFields()
+            # idx = points_for_CSV.fields().indexOf('Y')
 
-            e_x = QgsExpression( "$y" )
-            context = QgsExpressionContext()
-            context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(points_for_CSV))
+            # e_x = QgsExpression( "$y" )
+            # context = QgsExpressionContext()
+            # context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(points_for_CSV))
 
-            for f in points_for_CSV.getFeatures():
-                context.setFeature(f)
-                f['Y'] = e_x.evaluate( context )
-                points_for_CSV.updateFeature( f )
+            # for f in points_for_CSV.getFeatures():
+                # context.setFeature(f)
+                # f['Y'] = e_x.evaluate( context )
+                # points_for_CSV.updateFeature( f )
 
             points_for_CSV.commitChanges()
 
-            res = points_for_CSV.dataProvider().deleteAttributes([1,2,3])    # The [0] represents the 1st field, so [1] is the 2nd field etc. To delete multiple fields, use the comma to separate. Eg. [0, 2, 4]
+            #res = points_for_CSV.dataProvider().deleteAttributes([1,2,3])    # The [0] represents the 1st field, so [1] is the 2nd field etc. To delete multiple fields, use the comma to separate. Eg. [0, 2, 4]
             points_for_CSV.updateFields()   
 
             
@@ -806,7 +925,7 @@ class EvalTrenchGenerator:
 
 
             #Copy data from stake out points to CSV
-            Stakeoutlayer = 'Trench_StakeOut_points'
+            Stakeoutlayer = 'StakeOut_Points'
             CSV_table = 'The CSV'
             if len(QgsProject.instance().mapLayersByName(Stakeoutlayer)) != 0 and \
             len(QgsProject.instance().mapLayersByName(CSV_table)) != 0:
