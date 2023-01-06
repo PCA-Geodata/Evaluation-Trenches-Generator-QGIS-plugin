@@ -513,7 +513,7 @@ class EvalTrenchGenerator:
                         
                         #add style from file
             
-                        new_file.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/Trench_LOE_style.qml')))    
+                        new_file.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/Trench_LOE_style_colour_size.qml')))    
 
                         iface.mapCanvas().refresh()
                         
@@ -584,7 +584,6 @@ class EvalTrenchGenerator:
         if len(layers_list)== 0:
             return self.dontdonothing()
    
-    
     def routeNumeration(self):       
         """Run method that performs all the real work"""
 
@@ -738,17 +737,43 @@ class EvalTrenchGenerator:
                 'EXPRESSION':'collect_geometries(\r\n\r\nline_interpolate_point($geometry, \
                 length( $geometry)/2))',
                 'OUTPUT':'TEMPORARY_OUTPUT'})  ["OUTPUT"]
+################
+            
+            
+            shapes_dir = QgsProject.instance().homePath() + '/Shapefiles/'
+            
+            
+            
+            stakeout_points_files_list = []
+            os.chdir(shapes_dir)
+            for file in glob.glob("StakeOut_Points*.shp"):
+                stakeout_points_files_list.append(file)
 
-            project_dir = QgsProject.instance().homePath() + '/Shapefiles'
+            if len(stakeout_points_files_list) == 0:
+                so_point_filename = 'StakeOut_Points.shp'
+
+            if len(stakeout_points_files_list) > 0:
+                so_point_filename = 'StakeOut_Points_{}.shp'.format(len(stakeout_points_files_list))
+
+            if so_point_filename in stakeout_points_files_list:
+                so_point_filename = 'StakeOut_Points_{}.shp'.format((len(stakeout_points_files_list))+1)
+            
+            trench_LOE_path = shapes_dir+so_point_filename
+            
+            
+            
+            
+            
+  ############################          
 
             parameters = {'INPUT': LOE_points, 
-                          'OUTPUT': str(project_dir+'/StakeOut_Points.shp')}
+                          'OUTPUT': str(shapes_dir+so_point_filename)}
                           
                           
             processing.run("native:multiparttosingleparts", parameters)
     
-            new_layer = project_dir +'/StakeOut_Points.shp'
-            new_stakeout_layer = iface.addVectorLayer(new_layer, "StakeOut_Points", "ogr")
+            new_layer = shapes_dir +so_point_filename
+            new_stakeout_layer = iface.addVectorLayer(new_layer, so_point_filename, "ogr")
             
             if not new_stakeout_layer:
                 print("Layer failed to load!")
@@ -760,7 +785,7 @@ class EvalTrenchGenerator:
             
             
             root = QgsProject.instance().layerTreeRoot()
-            new_stakeout_layer_on_map = QgsProject.instance().mapLayersByName("StakeOut_Points")
+            new_stakeout_layer_on_map = QgsProject.instance().mapLayersByName(so_point_filename)
             thelayer = new_stakeout_layer_on_map[0]
             myblayer = root.findLayer(thelayer.id())
             myClone = myblayer.clone()
@@ -769,7 +794,7 @@ class EvalTrenchGenerator:
             parent.removeChildNode(myblayer) 
 
             #expand group
-            layeronplace = QgsProject.instance().mapLayersByName('StakeOut_Points')[0]
+            layeronplace = QgsProject.instance().mapLayersByName(so_point_filename)[0]
             myLayerNode = root.findLayer(layeronplace.id())
             myLayerNode.setExpanded(True)
             

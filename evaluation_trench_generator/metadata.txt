@@ -6,7 +6,7 @@
 name=Evaluation Trenches Generator
 qgisMinimumVersion=3.0
 description=This plugin provide a set of tools to generates trenches for archaeological evaluations.
-version=2.01
+version=2.02
 author=Valerio Pinna
 email=pinnavalerio@yahoo.co.uk
 
@@ -20,7 +20,10 @@ repository=https://github.com/ValPinnaSardinia/evaluation_trenches_generator_QGI
 
 hasProcessingProvider=no
 # Uncomment the following line and add your changelog:
-changelog= 2.01
+changelog= 2.02
+ - Stake-out points generator, if reused on the same project, generate sequential filenames for StakeOut_Points (e.g., StakeOut_Points_1.shp)
+ - Added new style for Trench_LOE with different colours according to trench size (more or less 30m)
+ <p>2.01
  - Trench generator, if reused on the same project, generate sequential filenames for Trench_LOE (e.g., Trench_LOE_1.shp)
  - Improved autoexclusion on trench calculation type
  - Added option for generate stakeout points for trenches or for excavation LOE
