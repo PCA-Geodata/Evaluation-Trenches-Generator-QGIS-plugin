@@ -772,8 +772,9 @@ class EvalTrenchGenerator:
                           
             processing.run("native:multiparttosingleparts", parameters)
     
+            so_point_filename_no_ext = so_point_filename.replace('.shp','')
             new_layer = shapes_dir +so_point_filename
-            new_stakeout_layer = iface.addVectorLayer(new_layer, so_point_filename, "ogr")
+            new_stakeout_layer = iface.addVectorLayer(new_layer, so_point_filename_no_ext, "ogr")
             
             if not new_stakeout_layer:
                 print("Layer failed to load!")
@@ -785,7 +786,7 @@ class EvalTrenchGenerator:
             
             
             root = QgsProject.instance().layerTreeRoot()
-            new_stakeout_layer_on_map = QgsProject.instance().mapLayersByName(so_point_filename)
+            new_stakeout_layer_on_map = QgsProject.instance().mapLayersByName(so_point_filename_no_ext)
             thelayer = new_stakeout_layer_on_map[0]
             myblayer = root.findLayer(thelayer.id())
             myClone = myblayer.clone()
@@ -794,7 +795,7 @@ class EvalTrenchGenerator:
             parent.removeChildNode(myblayer) 
 
             #expand group
-            layeronplace = QgsProject.instance().mapLayersByName(so_point_filename)[0]
+            layeronplace = QgsProject.instance().mapLayersByName(so_point_filename_no_ext)[0]
             myLayerNode = root.findLayer(layeronplace.id())
             myLayerNode.setExpanded(True)
             
@@ -965,9 +966,14 @@ class EvalTrenchGenerator:
 
             #Generate CSV for setout
             ####################################
-            points_for_CSV = QgsProject.instance().mapLayersByName('StakeOut_Points')[0]
-            #
-
+            #points_for_CSV = QgsProject.instance().mapLayersByName('StakeOut_Points')[0]
+            points_for_CSV = self.dlg7.stakeout_points_layer_comboBox.currentText()
+            if len(points_for_CSV) == 0:
+                QMessageBox.about(None,'Evaluation Trench Generator', 'No Stake-out point layer was selected. Please select a layer')
+                return self.dontdonothing()
+            else: 
+                points_for_CSV = self.layers[self.dlg7.stakeout_points_layer_comboBox.currentText()] 
+            
             ### add new fields 
             points_for_CSV.startEditing()
 
@@ -1001,15 +1007,21 @@ class EvalTrenchGenerator:
 
 
             #Copy data from stake out points to CSV
-            Stakeoutlayer = 'StakeOut_Points'
-            CSV_table = 'The CSV'
+            Stakeoutlayer = points_for_CSV.name().replace('.shp','')
+            CSV_table_name = 'The CSV'
+            
+            
             if len(QgsProject.instance().mapLayersByName(Stakeoutlayer)) != 0 and \
-            len(QgsProject.instance().mapLayersByName(CSV_table)) != 0:
+            len(QgsProject.instance().mapLayersByName(CSV_table_name)) != 0:
+            
                 survey_data_layer = QgsProject.instance().mapLayersByName(Stakeoutlayer)[0]
-                CSV_table = QgsProject.instance().mapLayersByName(CSV_table)[0]
+                CSV_table = QgsProject.instance().mapLayersByName(CSV_table_name)[0]
+                
+                
                 if survey_data_layer.isValid() and CSV_table.isValid():
                         if survey_data_layer.type() == QgsMapLayer.VectorLayer and \
                         CSV_table.type() == QgsMapLayer.VectorLayer:
+                            
                             iface.setActiveLayer( survey_data_layer ) 
                             survey_data_layer.selectAll()
                             iface.actionCopyFeatures().trigger()
@@ -1022,6 +1034,7 @@ class EvalTrenchGenerator:
                             CSV_table.updateExtents()
 
             else:
+                print ('error')
                 pass
                 
 
