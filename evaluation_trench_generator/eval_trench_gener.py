@@ -543,10 +543,9 @@ class EvalTrenchGenerator:
                 g = f.geometry()
                 centroid = g.centroid().asPoint()
                 
-                ro = g.rotate(-22.5, centroid)
+                ro = g.rotate(-10, centroid)
                 feat_to_change.append(f.id())
                 feat_to_change.append(g)
-                print(feat_to_change)
                 layer.changeGeometry(feat_to_change[0],feat_to_change[1])
                 feat_to_change.clear()
                 layer.triggerRepaint()
@@ -570,10 +569,9 @@ class EvalTrenchGenerator:
                 g = f.geometry()
                 centroid = g.centroid().asPoint()
                 
-                ro = g.rotate(22.5, centroid)
+                ro = g.rotate(10, centroid)
                 feat_to_change.append(f.id())
                 feat_to_change.append(g)
-                print(feat_to_change)
                 layer.changeGeometry(feat_to_change[0],feat_to_change[1])
                 feat_to_change.clear()
                 layer.triggerRepaint()
@@ -694,11 +692,6 @@ class EvalTrenchGenerator:
         result = self.dlg2.exec_()
         # See if OK was pressed
         if result:
-            
-            
-            
-            
-        
             trench_loe_layer_name = self.dlg2.trenchLOE_layer_comboBox.currentText()
 
             if len(trench_loe_layer_name) == 0:
@@ -737,12 +730,8 @@ class EvalTrenchGenerator:
                 'EXPRESSION':'collect_geometries(\r\n\r\nline_interpolate_point($geometry, \
                 length( $geometry)/2))',
                 'OUTPUT':'TEMPORARY_OUTPUT'})  ["OUTPUT"]
-################
-            
             
             shapes_dir = QgsProject.instance().homePath() + '/Shapefiles/'
-            
-            
             
             stakeout_points_files_list = []
             os.chdir(shapes_dir)
@@ -760,11 +749,6 @@ class EvalTrenchGenerator:
             
             trench_LOE_path = shapes_dir+so_point_filename
             
-            
-            
-            
-            
-  ############################          
 
             parameters = {'INPUT': LOE_points, 
                           'OUTPUT': str(shapes_dir+so_point_filename)}
@@ -872,7 +856,6 @@ class EvalTrenchGenerator:
             layeronplace.commitChanges()
             
     def generateCSV(self):
-        pass
         if self.first_start == True:
             #self.first_start = False
             self.dlg7 = EvalTrenchStakeOutRouteCSVDialog()
@@ -881,11 +864,7 @@ class EvalTrenchGenerator:
                
             self.dlg7.stakeout_points_layer_comboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
             self.dlg7.stakeout_survey_path_layer_comboBox.setFilters(QgsMapLayerProxyModel.LineLayer)
-            
-        
-            
-        
-        
+
         # show the dialog
         self.dlg7.show()
         # Run the dialog event loop
@@ -907,8 +886,6 @@ class EvalTrenchGenerator:
                 return self.dontdonothing()
             else: 
                 self.shpLayer = self.layers[self.dlg7.stakeout_survey_path_layer_comboBox.currentText()]
-            
-             
             
             stakeout_points_layer = QgsProject.instance().mapLayersByName(stakeout_points_layer_name)[0]
             stakeout_survey_path_layer = QgsProject.instance().mapLayersByName(stakeout_survey_path_layer_name)[0]

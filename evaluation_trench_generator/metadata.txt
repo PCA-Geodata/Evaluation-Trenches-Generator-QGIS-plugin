@@ -6,7 +6,7 @@
 name=Evaluation Trenches Generator
 qgisMinimumVersion=3.0
 description=This plugin provide a set of tools to generates trenches for archaeological evaluations.
-version=2.03
+version=2.04
 author=Valerio Pinna
 email=pinnavalerio@yahoo.co.uk
 
@@ -20,7 +20,9 @@ repository=https://github.com/ValPinnaSardinia/evaluation_trenches_generator_QGI
 
 hasProcessingProvider=no
 # Uncomment the following line and add your changelog:
-changelog= 2.03
+changelog=2.04
+ - Changed rotation value from 22.5 to 10 to give more control to the user
+ <p>2.03
  - Fixed minor bug on Stakeout_points name when it contains a suffux '_1, _2, etc'
  <p>2.02
  - Stake-out points generator, if reused on the same project, generate sequential filenames for StakeOut_Points (e.g., StakeOut_Points_1.shp)
