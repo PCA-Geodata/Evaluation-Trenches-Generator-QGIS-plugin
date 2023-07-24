@@ -254,7 +254,7 @@ class EvalTrenchGenerator:
             self.dlg.sb_comboBox.addItems(polygons_list)
         if len(layers_list)== 0:
             iface.messageBar().pushMessage(
-                "Trench Creator Plugin", 
+                "Evaluation Trench Generator", 
                 "No layers available. Please add a valid site boundary layer and retry.",
                 level=Qgis.Warning, duration=0)  
             return self.dontdonothing()
@@ -273,7 +273,7 @@ class EvalTrenchGenerator:
             self.dlg2.routelayer_comboBox.addItems(lines_list) 
         if len(layers_list)== 0:
             iface.messageBar().pushMessage(
-                "Trench Creator Plugin", 
+                "Evaluation Trench Generator", 
                 "No route layers available. Please add a valid linear route layer and retry.",
                 level=Qgis.Warning, duration=0)
             return self.dontdonothing()    
@@ -292,7 +292,7 @@ class EvalTrenchGenerator:
             self.dlg2.trenchLOE_layer_comboBox.addItems(loe_list)
         if len(layers_list)== 0:
             iface.messageBar().pushMessage(
-                "Trench Creator Plugin", 
+                "Evaluation Trench Generator", 
                 "No layers available. Please add a valid trenches limit of excavation layer and retry.",
                 level=Qgis.Warning, duration=0)
             return self.dontdonothing()
@@ -340,6 +340,8 @@ class EvalTrenchGenerator:
         
         self.dlg.button_box.setEnabled(False)
         
+        self.dlg.add_empty_layer_pushButton.clicked.connect(self.add_empty_LOE_layer)
+        
         # show the dialog
         self.dlg.show()
         # Run the dialog event loop
@@ -354,25 +356,41 @@ class EvalTrenchGenerator:
             trench_by_ares_check = self.dlg.trench_by_area_checkBox.isChecked()         
             site_boundary = self.dlg.sb_comboBox.currentText()
             
-            #project_dir = QgsProject.instance().homePath() + '/Shapefiles/Trench_LOE.shp'
-            shapefile_dir = QgsProject.instance().homePath() + '/Shapefiles/'
+            #Check if the project is saved in the disk 
+            # Get the file path of the current project
+            project_file_path = QgsProject.instance().fileName()
+
+            if project_file_path:
+                print("The project has been saved to:", project_file_path)
             
             
-            trench_LOE_files_list = []
-            os.chdir(shapefile_dir)
-            for file in glob.glob("Trench_LOE*.shp"):
-                trench_LOE_files_list.append(file)
+                #project_dir = QgsProject.instance().homePath() + '/Shapefiles/Trench_LOE.shp'
+                shapefile_dir = QgsProject.instance().homePath() + '/Shapefiles/'
+                if not os.path.exists(shapefile_dir):
+                    os.mkdir(shapefile_dir)
+                
+                #Check how many trench_loe files are already present in the folder
+                trench_LOE_files_list = []
+                os.chdir(shapefile_dir)
+                for file in glob.glob("Trench_LOE*.shp"):
+                    trench_LOE_files_list.append(file)
 
-            if len(trench_LOE_files_list) == 0:
-                tr_LOE_filename = 'Trench_LOE.shp'
+                if len(trench_LOE_files_list) == 0:
+                    tr_LOE_filename = 'Trench_LOE.shp'
 
-            if len(trench_LOE_files_list) > 0:
-                tr_LOE_filename = 'Trench_LOE_{}.shp'.format(len(trench_LOE_files_list))
+                if len(trench_LOE_files_list) > 0:
+                    tr_LOE_filename = 'Trench_LOE_{}.shp'.format(len(trench_LOE_files_list))
 
-            if tr_LOE_filename in trench_LOE_files_list:
-                tr_LOE_filename = 'Trench_LOE_{}.shp'.format((len(trench_LOE_files_list))+1)
+                if tr_LOE_filename in trench_LOE_files_list:
+                    tr_LOE_filename = 'Trench_LOE_{}.shp'.format((len(trench_LOE_files_list))+1)
+                
+                trench_LOE_path = shapefile_dir+tr_LOE_filename
             
-            trench_LOE_path = shapefile_dir+tr_LOE_filename
+            else:
+                print("The project has not been saved yet.")
+                #Define a name for the temporary Trench LOE layer
+                tr_LOE_filename = 'Trench_LOE_temp.shp'
+            
             
             if len(site_boundary) == 0:
                 QMessageBox.about(None,'Evaluation Trench Generator', 'No site boundary layer was selected. Please select a layer.')
@@ -393,7 +411,7 @@ class EvalTrenchGenerator:
             layers = QgsProject.instance().mapLayers()
             if len(layers) == 0: 
                 iface.messageBar().pushMessage(
-                "Trench Creator Plugin", 
+                "Evaluation Trench Generator", 
                 "No layers available. Please add a valid site boundary layer and retry.",
                 level=Qgis.Warning, duration=0)
             if len(layers)!= 0:                  
@@ -499,23 +517,40 @@ class EvalTrenchGenerator:
                         temp_layer.updateExtents() 
                         QgsProject.instance().removeMapLayers([new_points_temp_layer.id()])
                         
-                        options = QgsVectorFileWriter.SaveVectorOptions()
-                        options.driverName = "ESRI Shapefile"
-
-                        QgsVectorFileWriter.writeAsVectorFormatV2(temp_layer, trench_LOE_path, QgsCoordinateTransformContext(), options)
-
-                        new_file = QgsVectorLayer(trench_LOE_path, tr_LOE_filename, "ogr")
-
-                        QgsProject.instance().addMapLayer(new_file)
+                        
+                        if not project_file_path:
+                            #add temporary layer to the map
+                            QgsProject.instance().addMapLayer(temp_layer)
+                            #add style from file
+                            temp_layer.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/Trench_LOE_style_colour_size.qml')))    
+                            iface.mapCanvas().refresh()
+                            
+                            #Message to remember that the layer is only temporary
+                            QMessageBox.warning(
+                            None,
+                            'Evaluation Trench Generator',
+                            '''Trench_LOE_temp layer successfully added to the map.<br><center><span style="font-size: 15px;"><strong>Warning!</strong></span></center><br>
+                            Be aware that this layer is temporary and will be deleted once you close the project.<br>
+                            To preserve your data, make sure to save this layer to disk before closing the project. If not saved, all changes made to this layer will be lost.
+                            ''')
+                        
+                       
+                        if project_file_path:
+                            #Make temporary file permanent 
+                            options = QgsVectorFileWriter.SaveVectorOptions()
+                            options.driverName = "ESRI Shapefile"
+                            
+                            QgsVectorFileWriter.writeAsVectorFormatV2(temp_layer, trench_LOE_path, QgsCoordinateTransformContext(), options)
+                            
+                            new_file = QgsVectorLayer(trench_LOE_path, tr_LOE_filename, "ogr")
+                            
+                            QgsProject.instance().addMapLayer(new_file)
+                        
+                            #add style from file
+                            new_file.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/Trench_LOE_style_colour_size.qml')))    
+                            iface.mapCanvas().refresh()
                         
                         
-                        ####
-                        
-                        #add style from file
-            
-                        new_file.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/Trench_LOE_style_colour_size.qml')))    
-
-                        iface.mapCanvas().refresh()
                         
                         if trench_by_number_check == True and trench_by_ares_check == False:
                             QMessageBox.about(
@@ -524,7 +559,6 @@ class EvalTrenchGenerator:
                             '''{} trenches successfully added to the map.'''.format(trench_by_number))
                         
                         if trench_by_number_check == False and trench_by_ares_check == True: 
-                            
                             QMessageBox.about(
                             None,
                             'Evaluation Trench Generator',
@@ -711,19 +745,12 @@ class EvalTrenchGenerator:
             'OUTPUT':'TEMPORARY_OUTPUT'})  ["OUTPUT"]
 
             if self.dlg2.excavation_checkBox.isChecked():
-                print ('Excavation') 
-            
-                
                 LOE_points = processing.run("native:pointsalonglines", {'INPUT':explode_lines,
                 'DISTANCE':30,'START_OFFSET':0,'END_OFFSET':0,'OUTPUT':'TEMPORARY_OUTPUT'})["OUTPUT"]
             
-            
             if self.dlg2.eval_checkBox.isChecked():
-                print ('Evaluation')
-            
                 extract_shortest_sides = processing.run("native:extractbyexpression", {'INPUT':explode_lines,
                 'EXPRESSION':'length($geometry) < 3','OUTPUT':'TEMPORARY_OUTPUT'}) ["OUTPUT"]
-
 
                 LOE_points = processing.run("native:geometrybyexpression", {'INPUT': extract_shortest_sides,
                 'OUTPUT_GEOMETRY':2,'WITH_Z':False,'WITH_M':False,
@@ -731,43 +758,80 @@ class EvalTrenchGenerator:
                 length( $geometry)/2))',
                 'OUTPUT':'TEMPORARY_OUTPUT'})  ["OUTPUT"]
             
-            shapes_dir = QgsProject.instance().homePath() + '/Shapefiles/'
             
-            stakeout_points_files_list = []
-            os.chdir(shapes_dir)
-            for file in glob.glob("StakeOut_Points*.shp"):
-                stakeout_points_files_list.append(file)
+            #Check if the project is saved in the disk 
+            # Get the file path of the current project
+            project_file_path = QgsProject.instance().fileName()
 
-            if len(stakeout_points_files_list) == 0:
-                so_point_filename = 'StakeOut_Points.shp'
-
-            if len(stakeout_points_files_list) > 0:
-                so_point_filename = 'StakeOut_Points_{}.shp'.format(len(stakeout_points_files_list))
-
-            if so_point_filename in stakeout_points_files_list:
-                so_point_filename = 'StakeOut_Points_{}.shp'.format((len(stakeout_points_files_list))+1)
-            
-            trench_LOE_path = shapes_dir+so_point_filename
-            
-
-            parameters = {'INPUT': LOE_points, 
-                          'OUTPUT': str(shapes_dir+so_point_filename)}
-                          
-                          
-            processing.run("native:multiparttosingleparts", parameters)
-    
-            so_point_filename_no_ext = so_point_filename.replace('.shp','')
-            new_layer = shapes_dir +so_point_filename
-            new_stakeout_layer = iface.addVectorLayer(new_layer, so_point_filename_no_ext, "ogr")
-            
-            if not new_stakeout_layer:
-                print("Layer failed to load!")
+            if project_file_path:               
+                #Check if the folder Shapefile already exist 
+                # Create the 'shapefiles' subfolder if it doesn't exist
+                shapes_dir = QgsProject.instance().homePath() + '/Shapefiles/'
+                if not os.path.exists(shapes_dir):
+                    os.mkdir(shapes_dir)
                 
+
+                #Check how many stakeout_points files are already present in the folder
+                stakeout_points_files_list = []
+                os.chdir(shapes_dir)
+                for file in glob.glob("StakeOut_Points*.shp"):
+                    stakeout_points_files_list.append(file)
+
+                if len(stakeout_points_files_list) == 0:
+                    so_point_filename = 'StakeOut_Points.shp'
+
+                if len(stakeout_points_files_list) > 0:
+                    so_point_filename = 'StakeOut_Points_{}.shp'.format(len(stakeout_points_files_list))
+
+                if so_point_filename in stakeout_points_files_list:
+                    so_point_filename = 'StakeOut_Points_{}.shp'.format((len(stakeout_points_files_list))+1)
                 
-            #add style from file
-            #new_stakeout_layer_on_map = QgsProject.instance().mapLayersByName('StakeOut_Points')[0]
-            new_stakeout_layer.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/StakeOut_Points_style.qml')))    
+                trench_LOE_path = shapes_dir+so_point_filename
             
+                parameters = {'INPUT': LOE_points, 
+                              'OUTPUT': str(shapes_dir+so_point_filename)}
+                              
+                              
+                processing.run("native:multiparttosingleparts", parameters)
+        
+                so_point_filename_no_ext = so_point_filename.replace('.shp','')
+                new_layer = shapes_dir +so_point_filename
+                new_stakeout_layer = iface.addVectorLayer(new_layer, so_point_filename_no_ext, "ogr")
+                
+                #add style from file
+                new_stakeout_layer.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/StakeOut_Points_style.qml')))    
+                iface.mapCanvas().refresh()
+                
+                if not new_stakeout_layer:
+                    print("Layer failed to load!")
+            
+            else:
+                #Define a name for the temporary Trench LOE layer
+                so_point_filename = 'StakeOut_Points_temp.shp'
+                parameters = {'INPUT': LOE_points, 
+                              'OUTPUT': 'TEMPORARY_OUTPUT'}
+
+                temp_SO_points = processing.run("native:multiparttosingleparts", parameters)
+
+                so_point_filename_no_ext = so_point_filename.replace('.shp','')
+                new_layer = temp_SO_points['OUTPUT']
+                if new_layer.isValid():
+                    QgsProject.instance().addMapLayer(new_layer)
+                    new_layer.setName(so_point_filename_no_ext)
+                    
+                    #add style from file
+                    new_layer.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/StakeOut_Points_style.qml')))    
+                    iface.mapCanvas().refresh()
+                            
+                    #Message to remember that the layer is only temporary
+                    QMessageBox.warning(
+                    None,
+                    'Evaluation Trench Generator',
+                    '''Trench_LOE_temp layer successfully added to the map.<br><center><span style="font-size: 15px;"><strong>Warning!</strong></span></center><br>
+                    Be aware that this layer is temporary and will be deleted once you close the project.<br>
+                    To preserve your data, make sure to save this layer to disk before closing the project. If not saved, all changes made to this layer will be lost.
+                    ''')
+                
             
             root = QgsProject.instance().layerTreeRoot()
             new_stakeout_layer_on_map = QgsProject.instance().mapLayersByName(so_point_filename_no_ext)
@@ -775,8 +839,13 @@ class EvalTrenchGenerator:
             myblayer = root.findLayer(thelayer.id())
             myClone = myblayer.clone()
             parent = myblayer.parent()
-            root.findGroup("Mapping").insertChildNode(1, myClone)
-            parent.removeChildNode(myblayer) 
+            
+            # Check if the group "Mapping" exists in the layer tree
+            mapping_group = root.findGroup("Mapping")
+            
+            if mapping_group is not None:
+                mapping_group.insertChildNode(1, myClone)
+                parent.removeChildNode(myblayer) 
 
             #expand group
             layeronplace = QgsProject.instance().mapLayersByName(so_point_filename_no_ext)[0]
@@ -786,9 +855,6 @@ class EvalTrenchGenerator:
             iface.mapCanvas().refresh()
         
             ## change fields
-            
-
-
             field_idx = layeronplace.fields().indexOf('id')
             new_value = 0
 
@@ -1026,7 +1092,80 @@ class EvalTrenchGenerator:
             final_CSV.setName('Setout_CSV')
 
             QgsProject.instance().removeMapLayers([CSV_table.id()])
+            
+    def add_empty_LOE_layer(self):
+        #Check if the project is saved in the disk 
+        # Get the file path of the current project
+        project_file_path = QgsProject.instance().fileName()
 
+        if project_file_path:
+            #print("The project has been saved to:", project_file_path)
+            
+            #Check if the folder Shapefile already exist 
+            # Create the 'shapefiles' subfolder if it doesn't exist
+            shapefile_dir = QgsProject.instance().homePath() + '/Shapefiles/'
+            if not os.path.exists(shapefile_dir):
+                os.mkdir(shapefile_dir)
+                
+            #Check how many trench_loe files are already present in the folder
+            trench_LOE_files_list = []
+            os.chdir(shapefile_dir)
+            for file in glob.glob("Trench_LOE*.shp"):
+                trench_LOE_files_list.append(file)
+
+            if len(trench_LOE_files_list) == 0:
+                tr_LOE_filename = 'Trench_LOE.shp'
+
+            if len(trench_LOE_files_list) > 0:
+                tr_LOE_filename = 'Trench_LOE_{}.shp'.format(len(trench_LOE_files_list))
+
+            if tr_LOE_filename in trench_LOE_files_list:
+                tr_LOE_filename = 'Trench_LOE_{}.shp'.format((len(trench_LOE_files_list))+1)
+
+            trench_LOE_path = shapefile_dir+tr_LOE_filename
+            
+        else:
+            #print("The project has not been saved yet.")
+            #Define a name for the temporary Trench LOE layer
+            tr_LOE_filename = 'Trench_LOE_temp.shp'
+        
+        #create a new temp layer
+        temp_layer = QgsVectorLayer("polygon?crs=epsg:27700", tr_LOE_filename, "memory")
+        pr = temp_layer.dataProvider()
+        pr.addAttributes([QgsField("id",  QVariant.Int),
+                          QgsField("loe_no", QVariant.Int),
+                          QgsField("surv_type", QVariant.String),
+                          QgsField("surv_notes", QVariant.String)])
+        temp_layer.updateFields()
+
+        if not project_file_path:
+            #add temporary layer to the map
+            QgsProject.instance().addMapLayer(temp_layer)
+            #add style from file
+            temp_layer.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/Trench_LOE_style_colour_size.qml')))    
+            iface.mapCanvas().refresh()
+            
+            #Message to remember that the layer is only temporary
+            QMessageBox.warning(
+            None,
+            'Evaluation Trench Generator',
+            '''Trench_LOE_temp layer successfully added to the map.<br><center><span style="font-size: 15px;"><strong>Warning!</strong></span></center><br>
+            Be aware that this layer is temporary and will be deleted once you close the project.<br>
+            To preserve your data, make sure to save this layer to disk before closing the project. If not saved, all changes made to this layer will be lost.
+            ''')
+        
+        if project_file_path:
+            #Make temporary file permanent 
+            options = QgsVectorFileWriter.SaveVectorOptions()
+            options.driverName = "ESRI Shapefile"
+            
+            QgsVectorFileWriter.writeAsVectorFormatV2(temp_layer, trench_LOE_path, QgsCoordinateTransformContext(), options)
+            new_file = QgsVectorLayer(trench_LOE_path, tr_LOE_filename, "ogr")
+            QgsProject.instance().addMapLayer(new_file)
+            #add style from file
+            new_file.loadNamedStyle(os.path.join(os.path.join(cmd_folder, 'qml/Trench_LOE_style_colour_size.qml')))    
+            iface.mapCanvas().refresh()   
+        
     def dontdonothing(self):
         pass
     
