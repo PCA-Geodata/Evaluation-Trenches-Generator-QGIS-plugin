@@ -6,7 +6,7 @@
 name=Evaluation Trenches Generator
 qgisMinimumVersion=3.0
 description=This plugin provide a set of tools to generates trenches for archaeological evaluations.
-version=2.10
+version=2.15
 author=Valerio Pinna
 email=pinnavalerio@yahoo.co.uk
 
@@ -20,7 +20,9 @@ repository=https://github.com/ValPinnaSardinia/evaluation_trenches_generator_QGI
 
 hasProcessingProvider=no
 # Uncomment the following line and add your changelog:
-changelog=2.10
+changelog=2.15
+ - Changed Trench Length from integer number to decimal number
+ <p>2.10
  - Fix issue with folder structure (missing /Shapefiles) when the project is not saved on the disk.
    Now, if the project is not saved on disk, the new layers are temporary and warning message will appear.
    If the project is saved on disk, the code check for the subfodler /Shapefiles and, if not present, creates it. 

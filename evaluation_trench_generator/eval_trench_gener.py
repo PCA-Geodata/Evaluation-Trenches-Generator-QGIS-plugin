@@ -348,7 +348,7 @@ class EvalTrenchGenerator:
         result = self.dlg.exec_()
         # See if OK was pressed
         if result:
-            trench_length = self.dlg.tr_l_spinBox.value()
+            trench_length = self.dlg.tr_l_doubleSpinBox.value()
             trench_width = self.dlg.tr_w_doubleSpinBox.value()
             trench_by_number = self.dlg.tr_num_spinBox.value()      
             area_to_cover_percentage = self.dlg.tr_area_perc_spinBox_2.value()
