@@ -6,7 +6,7 @@
 name=Evaluation Trenches Generator
 qgisMinimumVersion=3.0
 description=This plugin provide a set of tools to generates trenches for archaeological evaluations.
-version=2.15
+version=2.50
 author=Valerio Pinna
 email=pinnavalerio@yahoo.co.uk
 
@@ -20,7 +20,13 @@ repository=https://github.com/ValPinnaSardinia/evaluation_trenches_generator_QGI
 
 hasProcessingProvider=no
 # Uncomment the following line and add your changelog:
-changelog=2.15
+changelog=<strong>2.50</strong>
+ - X and Y are recalculated when the route numbers are being calculated and the CSV is generated, to avoid having wrong or missing coordinates when points have been moved manually or added. 
+ - When LOE number is generated, if missing, the fields 'loe_no', 'surv_type' and 'surv_notes' are created to keep same standards on table.
+ - Added options for evaluation or excavation on generate route numbers and CSV. Fix issue on close points (less than 1.5 m - buffer tollerance for eval) on excavation.
+ <p>2.16
+ - Changed minumum width to 0.01
+ <p>2.15
  - Changed Trench Length from integer number to decimal number
  <p>2.10
  - Fix issue with folder structure (missing /Shapefiles) when the project is not saved on the disk.

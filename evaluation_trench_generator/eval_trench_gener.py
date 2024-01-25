@@ -104,7 +104,6 @@ class EvalTrenchGenerator:
         # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
         return QCoreApplication.translate('EvalTrenchGenerator', message)
 
-
     def add_action(
         self,
         icon_path,
@@ -230,7 +229,6 @@ class EvalTrenchGenerator:
         # will be set False in run()
         self.first_start = True
 
-
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
         for action in self.actions:
@@ -239,7 +237,6 @@ class EvalTrenchGenerator:
                 action)
             self.iface.removeToolBarIcon(action)
     
-
     def get_sb_layer(self):
         layers_list = QgsProject.instance().mapLayers()
         
@@ -664,6 +661,22 @@ class EvalTrenchGenerator:
                     QMessageBox.about(None,'Evaluation Trench Generator', '''The Route layer doesn't contain any valid line. Please draw on map the route representing the numbering order and retry.''')
                     return self.dontdonothing()
                 if len(fea_id) != 0: 
+                
+                    #check if the LOE field exists and, if not, create it
+                    caps = trenchLOE_lay.dataProvider().capabilities()    
+                    resadd = trenchLOE_lay.dataProvider()
+                    
+                    loe_field_name_list = ["id","loe_no","surv_type", "surv_notes"]
+
+                    for field_name in loe_field_name_list:
+                        loe_field_name = field_name
+                        field_index = trenchLOE_lay.fields().indexFromName(field_name)
+                        if field_index == -1:
+                            resadd.addAttributes([QgsField(field_name, QVariant.String, '', 254)])
+                            
+                    trenchLOE_lay.updateFields()
+                    
+                    
                     
                     route_id = fea_id[0]
 
@@ -827,7 +840,7 @@ class EvalTrenchGenerator:
                     QMessageBox.warning(
                     None,
                     'Evaluation Trench Generator',
-                    '''Trench_LOE_temp layer successfully added to the map.<br><center><span style="font-size: 15px;"><strong>Warning!</strong></span></center><br>
+                    '''StakeOur Point layer successfully added to the map.<br><center><span style="font-size: 15px;"><strong>Warning!</strong></span></center><br>
                     Be aware that this layer is temporary and will be deleted once you close the project.<br>
                     To preserve your data, make sure to save this layer to disk before closing the project. If not saved, all changes made to this layer will be lost.
                     ''')
@@ -920,17 +933,41 @@ class EvalTrenchGenerator:
                 layeronplace.updateFeature( f )
 
             layeronplace.commitChanges()
-            
+        
+    def check_csv_type_site(self): 
+        self.dlg7.label.setEnabled(True)
+        self.dlg7.label_2.setEnabled(True)
+        self.dlg7.label_4.setEnabled(True)
+        self.dlg7.so_point_first_num_spinBox.setEnabled(True)
+        self.dlg7.stakeout_points_layer_comboBox.setEnabled(True)
+        self.dlg7.stakeout_survey_path_layer_comboBox.setEnabled(True)
+        self.dlg7.button_box.setEnabled(True)
+        
     def generateCSV(self):
         if self.first_start == True:
             #self.first_start = False
             self.dlg7 = EvalTrenchStakeOutRouteCSVDialog()
             self.layers = {layer.name():layer for layer in QgsProject.instance().mapLayers().values() if layer.type()== 0}
             
-               
             self.dlg7.stakeout_points_layer_comboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
             self.dlg7.stakeout_survey_path_layer_comboBox.setFilters(QgsMapLayerProxyModel.LineLayer)
 
+        
+        # Set disabled status before check site type
+        
+        self.dlg7.label.setEnabled(False)
+        self.dlg7.label_2.setEnabled(False)
+        self.dlg7.label_4.setEnabled(False)
+        self.dlg7.so_point_first_num_spinBox.setEnabled(False)
+        self.dlg7.stakeout_points_layer_comboBox.setEnabled(False)
+        self.dlg7.stakeout_survey_path_layer_comboBox.setEnabled(False)
+        self.dlg7.button_box.setEnabled(False)
+        
+        
+        self.dlg7.evaluation_csv_check.stateChanged.connect(self.check_csv_type_site)
+        self.dlg7.excavation_csv_check.stateChanged.connect(self.check_csv_type_site)
+
+        
         # show the dialog
         self.dlg7.show()
         # Run the dialog event loop
@@ -969,18 +1006,36 @@ class EvalTrenchGenerator:
 
                 stakeout_points_layer.startEditing()
                 
-                e = QgsExpression( '''\
+                
+            
+                
+                if self.dlg7.evaluation_csv_check.isChecked():
+                    e = QgsExpression( '''\
+                        with_variable('route', geometry( get_feature_by_id('{0}', {1})),\
+                        array_find(\
+                        array_filter(\
+                        array_sort(\
+                        array_agg(line_locate_point(@route, start_point(intersection(buffer($geometry,1.5), @route))))\
+                        ), @element>=0),\
+                        line_locate_point(@route, start_point(intersection(buffer($geometry,1.5), @route)))\
+                        ))+{2}
+                        '''.format(stakeout_survey_path_layer_name, route_id, SO_point_first_number ) 
+                    )
 
-                with_variable('route', geometry( get_feature_by_id('{0}', {1})),\
-                array_find(\
-                array_filter(\
-                array_sort(\
-                array_agg(line_locate_point(@route, start_point(intersection(buffer($geometry,1.5), @route))))\
-                ), @element>=0),\
-                line_locate_point(@route, start_point(intersection(buffer($geometry,1.5), @route)))\
-                ))+{2}
-                '''.format(stakeout_survey_path_layer_name, route_id, SO_point_first_number ) )
-
+                if self.dlg7.excavation_csv_check.isChecked():
+                    e = QgsExpression( '''\
+                        with_variable('route', geometry( get_feature_by_id('{0}', {1})),\
+                        array_find(\
+                        array_filter(\
+                        array_sort(\
+                        array_agg(line_locate_point(@route, start_point(intersection($geometry, @route))))\
+                        ), @element>=0),\
+                        line_locate_point(@route, start_point(intersection($geometry, @route)))\
+                        ))+{2}
+                        '''.format(stakeout_survey_path_layer_name, route_id, SO_point_first_number ) 
+                    )
+                
+                
                 context = QgsExpressionContext()
                 context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(stakeout_points_layer))
 
@@ -1004,6 +1059,43 @@ class EvalTrenchGenerator:
                     stakeout_points_layer.updateFeature(f)
 
                 stakeout_points_layer.deselect(selectid)
+                
+                
+                # Recalculate coordinates before converting to CSV
+                
+                ###field X
+                field_x = QgsField('X', QVariant.Double)
+                stakeout_points_layer.dataProvider().addAttributes([field_x])
+                stakeout_points_layer.updateFields()
+                idx = stakeout_points_layer.fields().indexOf('X')
+
+                e_x = QgsExpression( "$x" )
+                context = QgsExpressionContext()
+                context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(stakeout_points_layer))
+
+                for f in stakeout_points_layer.getFeatures():
+                    context.setFeature(f)
+                    f['X'] = e_x.evaluate( context )
+                    stakeout_points_layer.updateFeature( f )
+
+                ###field y
+                field_x = QgsField('Y', QVariant.Double)
+                stakeout_points_layer.dataProvider().addAttributes([field_x])
+                stakeout_points_layer.updateFields()
+                idx = stakeout_points_layer.fields().indexOf('Y')
+
+                e_x = QgsExpression( "$y" )
+                context = QgsExpressionContext()
+                context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(stakeout_points_layer))
+
+                for f in stakeout_points_layer.getFeatures():
+                    context.setFeature(f)
+                    f['Y'] = e_x.evaluate( context )
+                    stakeout_points_layer.updateFeature( f )
+
+                stakeout_points_layer.commitChanges()
+                
+                
                 stakeout_points_layer.commitChanges()
 
 
